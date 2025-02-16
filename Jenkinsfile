@@ -111,10 +111,12 @@ pipeline {
             echo "Updating Kubernetes deployment with new image: ${IMAGE_TAG}"
             kubectl set image deployment/backend-deployment backend-container=${IMAGE_TAG} --record || { echo "Failed to update image"; exit 1; }
             
-            echo "Checking rollout status..."
-            kubectl rollout status deployment/backend-deployment --timeout=120s || { 
-                echo "Rollout failed. Rolling back..."
-                kubectl rollout undo deployment/backend-deployment
+            echo "Forcing pod restart..."
+            kubectl delete pods -l app=backend || { echo "Failed to delete pods"; exit 1; }
+
+            echo "Verifying pod health..."
+            kubectl wait --for=condition=ready pod -l app=backend --timeout=120s || {
+                echo "Pods failed to become ready!"
                 exit 1
             }
 
@@ -123,6 +125,7 @@ pipeline {
         }
     }
 }
+
 
 
         stage('Get Load Balancer DNS & Deploy Infra') {
