@@ -14,7 +14,10 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t backend .'
+                script {
+                    def IMAGE_TAG = "backend:$(git rev-parse --short HEAD)"
+                    sh "docker build -t ${IMAGE_TAG} ."
+                }
             }
         }
 
@@ -28,10 +31,17 @@ pipeline {
 
         stage('Tag and Push Image') {
             steps {
-                sh '''
-                docker tag backend:latest 038462784201.dkr.ecr.ap-south-1.amazonaws.com/backend:latest
-                docker push 038462784201.dkr.ecr.ap-south-1.amazonaws.com/backend:latest
-                '''
+                script {
+                    def IMAGE_TAG = "backend:$(git rev-parse --short HEAD)"
+                    def ECR_URL = "038462784201.dkr.ecr.ap-south-1.amazonaws.com/backend"
+                    
+                    sh """
+                    docker tag ${IMAGE_TAG} ${ECR_URL}:latest
+                    docker tag ${IMAGE_TAG} ${ECR_URL}:$(git rev-parse --short HEAD)
+                    docker push ${ECR_URL}:latest
+                    docker push ${ECR_URL}:$(git rev-parse --short HEAD)
+                    """
+                }
             }
         }
 
@@ -83,6 +93,23 @@ pipeline {
                     sh '''
                     echo "Applying all Kubernetes configurations from deployment directory..."
                     kubectl apply -f deployment/ || { echo "Failed to apply Kubernetes configurations"; exit 1; }
+                    '''
+                }
+            }
+        }
+
+        stage('Update Kubernetes Deployment with New Image') {
+            steps {
+                script {
+                    def IMAGE_TAG = "038462784201.dkr.ecr.ap-south-1.amazonaws.com/backend:$(git rev-parse --short HEAD)"
+                    
+                    sh '''
+                    echo "Updating deployment with new image: ${IMAGE_TAG}"
+                    
+                    kubectl set image deployment/backend-deployment backend=${IMAGE_TAG} || { echo "Failed to update image"; exit 1; }
+
+                    echo "Ensuring rollout is successful..."
+                    kubectl rollout status deployment/backend-deployment || { echo "Rollout failed"; exit 1; }
                     '''
                 }
             }
