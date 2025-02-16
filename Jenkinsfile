@@ -101,20 +101,29 @@ pipeline {
             }
         }
 
-        stage('Update Kubernetes Deployment with New Image') {
-            steps {
-                script {
-                    def GIT_COMMIT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    def IMAGE_TAG = "${ECR_URL}:${GIT_COMMIT}"
+       stage('Update Kubernetes Deployment with New Image') {
+    steps {
+        script {
+            def GIT_COMMIT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+            def IMAGE_TAG = "${ECR_URL}:${GIT_COMMIT}"
 
-                    sh """
-                    echo "Updating Kubernetes deployment with new image: ${IMAGE_TAG}"
-                    kubectl set image deployment/backend-deployment backend-container=${IMAGE_TAG} --record
-                    kubectl rollout status deployment/backend-deployment || { echo "Rollout failed"; exit 1; }
-                    """
-                }
+            sh """
+            echo "Updating Kubernetes deployment with new image: ${IMAGE_TAG}"
+            kubectl set image deployment/backend-deployment backend-container=${IMAGE_TAG} --record || { echo "Failed to update image"; exit 1; }
+            
+            echo "Checking rollout status..."
+            kubectl rollout status deployment/backend-deployment --timeout=120s || { 
+                echo "Rollout failed. Rolling back..."
+                kubectl rollout undo deployment/backend-deployment
+                exit 1
             }
+
+            echo "Deployment update successful!"
+            """
         }
+    }
+}
+
 
         stage('Get Load Balancer DNS & Deploy Infra') {
             steps {
