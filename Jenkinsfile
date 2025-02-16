@@ -109,7 +109,7 @@ pipeline {
 
                     sh """
                     echo "Updating Kubernetes deployment with new image: ${IMAGE_TAG}"
-                    kubectl set image deployment/backend-deployment backend=${IMAGE_TAG} --record
+                    kubectl set image deployment/backend-deployment backend-container=${IMAGE_TAG} --record
                     kubectl rollout status deployment/backend-deployment || { echo "Rollout failed"; exit 1; }
                     """
                 }
