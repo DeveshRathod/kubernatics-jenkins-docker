@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/DeveshRathod/backend-todo'
+                git branch: 'main', url: 'https://github.com/DeveshRathod/kubernatics-jenkins-docker'
             }
         }
 
@@ -114,7 +114,7 @@ pipeline {
                     fi
 
                     echo "Initializing and Applying Terraform..."
-                    cd terraform/
+                    cd deployment/
                     terraform init
                     terraform apply -var="backend_lb_dns=$LB_DNS" -auto-approve
                     '''
