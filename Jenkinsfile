@@ -1,8 +1,11 @@
 pipeline {
     agent any
     environment {
-        AWS_ACCESS_KEY_ID = credentials('AWS_ACCESS_KEY_ID') 
-        AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY') 
+        AWS_ACCESS_KEY_ID = credentials('AWS_ACCESS_KEY_ID')
+        AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
+        AWS_REGION = 'ap-south-1'
+        CLUSTER_NAME = 'Devesh'
+        AWS_ACCOUNT_ID = '038462784201' // Replace with actual AWS Account ID
     }
 
     stages {
@@ -21,7 +24,7 @@ pipeline {
         stage('Login to AWS ECR') {
             steps {
                 sh '''
-                aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 038462784201.dkr.ecr.ap-south-1.amazonaws.com
+                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
                 '''
             }
         }
@@ -29,9 +32,35 @@ pipeline {
         stage('Tag and Push Image') {
             steps {
                 sh '''
-                docker tag backend:latest 038462784201.dkr.ecr.ap-south-1.amazonaws.com/backend:latest
-                docker push 038462784201.dkr.ecr.ap-south-1.amazonaws.com/backend:latest
+                docker tag backend:latest ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/backend:latest
+                docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/backend:latest
                 '''
+            }
+        }
+
+        stage('Check & Create EKS Cluster') {
+            steps {
+                script {
+                    sh '''
+                    echo "Checking if EKS cluster ${CLUSTER_NAME} exists..."
+                    EXISTING_CLUSTER=$(aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" --query "cluster.status" --output text 2>&1 || echo "NOT_FOUND")
+                    
+                    if [[ "$EXISTING_CLUSTER" == "ACTIVE" ]]; then
+                        echo "Cluster ${CLUSTER_NAME} already exists."
+                    else
+                        echo "Cluster ${CLUSTER_NAME} does not exist. Creating EKS cluster..."
+                        aws eks create-cluster \
+                            --name "${CLUSTER_NAME}" \
+                            --region "${AWS_REGION}" \
+                            --role-arn arn:aws:iam::${AWS_ACCOUNT_ID}:role/EKS-ClusterRole \
+                            --resources-vpc-config subnetIds=subnet-abc123,subnet-def456,securityGroupIds=sg-xyz789
+
+                        echo "Waiting for cluster creation..."
+                        aws eks wait cluster-active --name "${CLUSTER_NAME}" --region "${AWS_REGION}"
+                        echo "Cluster ${CLUSTER_NAME} is now active."
+                    fi
+                    '''
+                }
             }
         }
 
@@ -40,12 +69,7 @@ pipeline {
                 script {
                     sh '''
                     echo "Updating Kubeconfig..."
-                    
-                    export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY}
-                    export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-
-                    aws eks update-kubeconfig --region ap-south-1 --name Devesh || { echo "Failed to update kubeconfig"; exit 1; }
-
+                    aws eks update-kubeconfig --region "${AWS_REGION}" --name "${CLUSTER_NAME}"
                     echo "Verifying Kubernetes Authentication..."
                     kubectl get nodes || { echo "Jenkins is NOT authenticated with EKS"; exit 1; }
                     '''
@@ -57,7 +81,7 @@ pipeline {
             steps {
                 script {
                     sh '''
-                    echo "Applying all Kubernetes configurations from deployment directory..."
+                    echo "Applying Kubernetes configurations from deployment directory..."
                     kubectl apply -f deployment/ || { echo "Failed to apply Kubernetes configurations"; exit 1; }
                     '''
                 }
