@@ -25,7 +25,7 @@ const __dirname = path.resolve();
 app.use("/health", (req, res) => {
   console.log();
 
-  res.status(200).send("Server is healthy Devesh");
+  res.status(200).send("Server is healthy Test2");
 });
 
 // Connect
