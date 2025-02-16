@@ -71,6 +71,17 @@ pipeline {
             }
         }
 
+        stage('Cleanup Old Docker Images') {
+            steps {
+                script {
+                    sh '''
+                    echo "Removing old Docker images..."
+                    docker image prune -af || echo "Failed to remove old images"
+                    '''
+                }
+            }
+        }
+
         stage('EKS Cluster Management') {
             stages {
                 stage('Check & Create EKS Cluster') {
