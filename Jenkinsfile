@@ -3,6 +3,7 @@ pipeline {
     environment {
         AWS_ACCESS_KEY_ID = credentials('AWS_ACCESS_KEY_ID') 
         AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY') 
+        ECR_URL = "038462784201.dkr.ecr.ap-south-1.amazonaws.com/backend"
     }
 
     stages {
@@ -15,7 +16,9 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    def IMAGE_TAG = "backend:$(git rev-parse --short HEAD)"
+                    def GIT_COMMIT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    def IMAGE_TAG = "${ECR_URL}:${GIT_COMMIT}"
+
                     sh "docker build -t ${IMAGE_TAG} ."
                 }
             }
@@ -32,14 +35,14 @@ pipeline {
         stage('Tag and Push Image') {
             steps {
                 script {
-                    def IMAGE_TAG = "backend:$(git rev-parse --short HEAD)"
-                    def ECR_URL = "038462784201.dkr.ecr.ap-south-1.amazonaws.com/backend"
-                    
+                    def GIT_COMMIT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    def IMAGE_TAG = "${ECR_URL}:${GIT_COMMIT}"
+
                     sh """
-                    docker tag ${IMAGE_TAG} ${ECR_URL}:latest
-                    docker tag ${IMAGE_TAG} ${ECR_URL}:$(git rev-parse --short HEAD)
+                    docker tag backend:latest ${IMAGE_TAG}
+                    docker tag backend:latest ${ECR_URL}:latest
+                    docker push ${IMAGE_TAG}
                     docker push ${ECR_URL}:latest
-                    docker push ${ECR_URL}:$(git rev-parse --short HEAD)
                     """
                 }
             }
@@ -101,16 +104,14 @@ pipeline {
         stage('Update Kubernetes Deployment with New Image') {
             steps {
                 script {
-                    def IMAGE_TAG = "038462784201.dkr.ecr.ap-south-1.amazonaws.com/backend:$(git rev-parse --short HEAD)"
-                    
-                    sh '''
-                    echo "Updating deployment with new image: ${IMAGE_TAG}"
-                    
-                    kubectl set image deployment/backend-deployment backend=${IMAGE_TAG} || { echo "Failed to update image"; exit 1; }
+                    def GIT_COMMIT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    def IMAGE_TAG = "${ECR_URL}:${GIT_COMMIT}"
 
-                    echo "Ensuring rollout is successful..."
+                    sh """
+                    echo "Updating Kubernetes deployment with new image: ${IMAGE_TAG}"
+                    kubectl set image deployment/backend-deployment backend=${IMAGE_TAG} --record
                     kubectl rollout status deployment/backend-deployment || { echo "Rollout failed"; exit 1; }
-                    '''
+                    """
                 }
             }
         }
