@@ -14,15 +14,19 @@ pipeline {
         }
 
         stage('Build Docker Image') {
-            steps {
-                script {
-                    def GIT_COMMIT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    def IMAGE_TAG = "${ECR_URL}:${GIT_COMMIT}"
+    steps {
+        script {
+            def GIT_COMMIT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+            def IMAGE_TAG = "${ECR_URL}:${GIT_COMMIT}"
 
-                    sh "docker build -t ${IMAGE_TAG} ."
-                }
-            }
+            sh """
+            docker build -t ${IMAGE_TAG} .
+            docker tag ${IMAGE_TAG} backend:latest
+            """
         }
+    }
+}
+
 
         stage('Login to AWS ECR') {
             steps {
